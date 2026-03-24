@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Numérogique — Le jeu des nombres</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body,#root{height:100%;overflow-x:hidden}
+    body{background:#0d1117;font-family:'Baloo 2',cursive}
+    @keyframes shake{0%,100%{transform:translateX(0)}15%{transform:translateX(-7px)}30%{transform:translateX(7px)}45%{transform:translateX(-5px)}60%{transform:translateX(5px)}75%{transform:translateX(-2px)}90%{transform:translateX(2px)}}
+    @keyframes popUp{from{opacity:0;transform:scale(.88) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+    @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes targetPop{0%{transform:scale(.5);opacity:0}65%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+    @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(240,136,62,.5)}50%{box-shadow:0 0 0 10px rgba(240,136,62,0)}}
+    @keyframes revealFade{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+    .mBtn{transition:transform .15s,box-shadow .15s}
+    .mBtn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.5)!important}
+    .pulseBtn{animation:glow 1.4s infinite}
+    button:active{opacity:.8}
+    button:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    /* ── CRYPTO RANDOM ─────────────────────────────────────────────────────── */
+    function rand(){const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/(0xFFFFFFFF+1);}
+    const ri=(m)=>Math.floor(rand()*m);
+    const rp=(a)=>a[ri(a.length)];
+    const rs=(a)=>[...a].sort(()=>rand()-.5);
+
+    /* ── GÉNÉRATION ─────────────────────────────────────────────────────────── */
+    function generateSolution(nums, decimal) {
+      const ops=['+','-','*','/'];
+      const dispOps={'+':'+','-':'−','*':'×','/':'÷'};
+      for(let t=0;t<300;t++){
+        const s=rs(nums); let r=s[0];
+        const steps=[String(s[0])];
+        const usedOps=[];
+        for(let i=1;i<s.length;i++){
+          const op=rp(ops); if(op==='/'&&s[i]===0) continue;
+          r=op==='+'?r+s[i]:op==='-'?r-s[i]:op==='*'?r*s[i]:r/s[i];
+          steps.push(String(s[i]));
+          usedOps.push(op);
+        }
+        r=Math.round(r*100)/100;
+        if(!isFinite(r)||isNaN(r)||r<=0||r>999) continue;
+        if(!decimal&&r!==Math.floor(r)) continue;
+        if(decimal&&r===Math.floor(r)) continue;
+        let sol=steps[0];
+        for(let i=0;i<usedOps.length;i++) sol+=` ${dispOps[usedOps[i]]} ${steps[i+1]}`;
+        return {target:r, solution:sol};
+      }
+      const fallback=nums.reduce((a,b)=>a+b,0);
+      return {target:fallback, solution:nums.join(' + ')};
+    }
+    function genSimple(){
+      const sm=[1,2,3,4,5,6,7,8,9,10],big=[25,50,75,100];
+      const n=4+ri(3),nums=[];
+      for(let i=0;i<n;i++) nums.push(rp(rand()>.6?big:sm));
+      const {target,solution}=generateSolution(nums,false);
+      return {numbers:nums,target,solution};
+    }
+    function genComplex(){
+      const dec=[0.5,1.5,2.5,3.5,0.25,0.75,1.25,3.14,1.1,2.2,5.5,4.5],int=[2,3,4,5,6,7,8,10];
+      const n=4+ri(2),nums=[];
+      for(let i=0;i<2;i++) nums.push(rp(dec));
+      for(let i=2;i<n;i++) nums.push(rp(rand()>.5?dec:int));
+      const {target,solution}=generateSolution(nums,true);
+      return {numbers:nums,target,solution};
+    }
+
+    /* ── EVAL ───────────────────────────────────────────────────────────────── */
+    function safeEval(expr){
+      try{
+        let e=expr.replace(/−/g,'-').replace(/×/g,'*').replace(/÷/g,'/');
+        if(!/^[\d\s+\-*/.()]+$/.test(e)) return null;
+        const r=Function('"use strict";return('+e+')')();
+        if(!isFinite(r)||isNaN(r)) return null;
+        return Math.round(r*10000)/10000;
+      }catch{return null;}
+    }
+    function extractNums(expr){
+      return(expr.replace(/−/g,'-').replace(/×/g,'*').replace(/÷/g,'/').match(/\d+\.?\d*/g)||[]).map(Number);
+    }
+
+    /* ── CONFETTI ───────────────────────────────────────────────────────────── */
+    const CC=['#FF6B6B','#FFE66D','#4ECDC4','#45B7D1','#96CEB4','#DDA0DD','#A8E063'];
+    function Confetti({active}){
+      const ref=useRef(null);
+      useEffect(()=>{
+        if(!active) return;
+        const c=ref.current;if(!c) return;
+        const ctx=c.getContext('2d');
+        c.width=window.innerWidth;c.height=window.innerHeight;
+        const ps=Array.from({length:120},()=>({x:rand()*c.width,y:-20,r:5+rand()*7,d:2+rand()*3,color:rp(CC),ta:0,ts:.04+rand()*.08}));
+        let fr;
+        const draw=()=>{
+          ctx.clearRect(0,0,c.width,c.height);
+          ps.forEach(p=>{p.ta+=p.ts;p.y+=p.d;p.x+=Math.sin(p.ta)*1.5;ctx.beginPath();ctx.lineWidth=p.r;ctx.strokeStyle=p.color;ctx.moveTo(p.x+Math.sin(p.ta)*12+p.r/3,p.y);ctx.lineTo(p.x+Math.sin(p.ta)*12,p.y+Math.sin(p.ta)*12+p.r/5);ctx.stroke();});
+          fr=requestAnimationFrame(draw);
+        };
+        draw();
+        const t=setTimeout(()=>cancelAnimationFrame(fr),3500);
+        return()=>{cancelAnimationFrame(fr);clearTimeout(t);};
+      },[active]);
+      if(!active) return null;
+      return <canvas ref={ref} style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999}}/>;
+    }
+
+    /* ── SPLASH SCREEN ──────────────────────────────────────────────────────── */
+    function SplashScreen({onDone}){
+      const[phase,setPhase]=useState('in');
+      useEffect(()=>{
+        const t1=setTimeout(()=>setPhase('hold'),200);
+        const t2=setTimeout(()=>setPhase('out'),2000);
+        const t3=setTimeout(()=>onDone(),2500);
+        return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};
+      },[]);
+      return(
+        <div style={{position:'fixed',inset:0,zIndex:1000,background:'#0d1117',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,transition:'opacity .5s ease',opacity:phase==='out'?0:1}}>
+          <div style={{width:110,height:110,background:'linear-gradient(135deg,#238636,#2ea043)',borderRadius:28,display:'flex',alignItems:'center',justifyContent:'center',fontSize:56,boxShadow:'0 20px 60px rgba(46,160,67,.5)',transform:phase==='in'?'scale(.6) translateY(20px)':'scale(1) translateY(0)',transition:'transform .5s cubic-bezier(.34,1.56,.64,1)'}}>
+            🔢
+          </div>
+          <div style={{textAlign:'center',transform:phase==='in'?'translateY(10px)':'translateY(0)',opacity:phase==='in'?0:1,transition:'all .4s ease .15s'}}>
+            <div style={{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:32,background:'linear-gradient(130deg,#79c0ff,#56d364,#f0883e)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Numérogique</div>
+            <div style={{fontSize:13,color:'#484f58',marginTop:4,fontFamily:"'Baloo 2',cursive"}}>Le jeu des nombres</div>
+          </div>
+          <div style={{width:120,height:3,background:'#21262d',borderRadius:2,overflow:'hidden',marginTop:4}}>
+            <div style={{height:'100%',background:'linear-gradient(90deg,#238636,#56d364)',borderRadius:2,width:phase==='out'?'100%':phase==='hold'?'80%':'10%',transition:'width 1.5s ease'}}/>
+          </div>
+        </div>
+      );
+    }
+
+    /* ── HINT REVEAL ────────────────────────────────────────────────────────── */
+    function tokeniseSolution(solution){return solution.split(' ').filter(t=>t.length>0);}
+    function tokenColor(tok){return['+','−','×','÷','='].includes(tok)?'#f0883e':'#79c0ff';}
+
+    function HintReveal({solution}){
+      const tokens=tokeniseSolution(solution);
+      const[revealed,setRevealed]=useState(0);
+      const revealNext=()=>{if(revealed<tokens.length)setRevealed(r=>r+1);};
+      const reset=()=>setRevealed(0);
+      const done=revealed===tokens.length;
+      return(
+        <div style={p.hintBox}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,gap:8}}>
+            <span style={{fontSize:9,fontWeight:700,color:'#484f58',letterSpacing:2}}>SOLUTION CACHÉE</span>
+            <div style={{display:'flex',gap:6}}>
+              {!done&&<button style={p.hintRevealBtn} onClick={revealNext}>{revealed===0?'▶ Révéler':'▶ Suite'}</button>}
+              {revealed>0&&<button style={p.hintResetBtn} onClick={reset}>↺</button>}
+            </div>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6,minHeight:36}}>
+            {tokens.map((tok,i)=>{
+              const vis=i<revealed;
+              const fresh=i===revealed-1;
+              const isOp=['+','−','×','÷','='].includes(tok);
+              return(
+                <span key={i} style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:18,display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:Math.max(28,tok.length*11),height:34,borderRadius:7,padding:'0 6px',background:vis?'rgba(121,192,255,.08)':'#1c2128',border:vis?`1.5px solid ${isOp?'rgba(240,136,62,.4)':'rgba(121,192,255,.25)'}`:'1.5px solid #21262d',color:vis?tokenColor(tok):'transparent',transition:'all .25s ease',transform:fresh?'scale(1.14)':'scale(1)',boxShadow:fresh?`0 0 14px ${isOp?'rgba(240,136,62,.35)':'rgba(121,192,255,.3)'}`:'none',userSelect:'none'}}>{vis?tok:'?'}</span>
+              );
+            })}
+          </div>
+          <div style={{marginTop:10,display:'flex',alignItems:'center',gap:8}}>
+            <div style={{flex:1,height:3,background:'#21262d',borderRadius:2,overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${(revealed/tokens.length)*100}%`,background:'linear-gradient(90deg,#238636,#56d364)',borderRadius:2,transition:'width .3s ease'}}/>
+            </div>
+            <span style={{fontSize:10,color:'#484f58',fontFamily:"'Baloo 2',cursive",fontWeight:700,flexShrink:0}}>{revealed}/{tokens.length}</span>
+          </div>
+          {done&&<div style={{marginTop:6,fontSize:11,color:'#56d364',fontWeight:700,fontFamily:"'Baloo 2',cursive"}}>✓ Solution complète révélée !</div>}
+        </div>
+      );
+    }
+
+    /* ── STYLES ─────────────────────────────────────────────────────────────── */
+    const p={
+      page:{minHeight:'100vh',background:'#0d1117',color:'#e6edf3',fontFamily:"'Baloo 2',cursive",display:'flex',flexDirection:'column',overflowX:'hidden',paddingBottom:16},
+      wOuter:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px 14px',minHeight:'100vh'},
+      wCard:{width:'100%',maxWidth:420,background:'#161b22',border:'1px solid #30363d',borderRadius:18,padding:'28px 22px',display:'flex',flexDirection:'column',alignItems:'center',gap:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',animation:'popUp .4s ease'},
+      wLogoWrap:{width:72,height:72,background:'linear-gradient(135deg,#238636,#2ea043)',borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',fontSize:38,boxShadow:'0 8px 24px rgba(46,160,67,.4)'},
+      wTitle:{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:32,letterSpacing:'-.5px',background:'linear-gradient(130deg,#79c0ff,#56d364,#f0883e)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textAlign:'center'},
+      wSub:{fontSize:13,color:'#8b949e',textAlign:'center',lineHeight:1.6,maxWidth:320},
+      wDivider:{width:'100%',height:1,background:'#21262d'},
+      wSmallLabel:{fontSize:10,letterSpacing:2.5,color:'#484f58',fontWeight:700},
+      wModes:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,width:'100%'},
+      mBtnG:{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'16px 10px',background:'rgba(56,139,73,.1)',border:'1.5px solid rgba(56,139,73,.3)',borderRadius:12,color:'#e6edf3',cursor:'pointer',fontFamily:"'Baloo 2',cursive",width:'100%'},
+      mBtnR:{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'16px 10px',background:'rgba(248,81,73,.08)',border:'1.5px solid rgba(248,81,73,.25)',borderRadius:12,color:'#e6edf3',cursor:'pointer',fontFamily:"'Baloo 2',cursive",width:'100%'},
+      mBtnName:{fontSize:17,fontWeight:800},
+      mBtnDesc:{fontSize:11,color:'#8b949e',textAlign:'center',lineHeight:1.5},
+      wRules:{width:'100%',background:'#0d1117',borderRadius:10,padding:'10px 14px',border:'1px solid #21262d',display:'flex',flexDirection:'column',gap:5},
+      wRule:{fontSize:12,color:'#8b949e'},
+      wPlatforms:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'#0d1117',borderRadius:10,border:'1px solid #21262d',width:'100%',justifyContent:'center'},
+      header:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'#161b22',borderBottom:'1px solid #21262d',position:'sticky',top:0,zIndex:50,gap:8,minHeight:48},
+      hBtn:{background:'transparent',border:'1px solid #30363d',borderRadius:8,color:'#8b949e',padding:'5px 10px',cursor:'pointer',fontSize:12,fontFamily:"'Baloo 2',cursive",fontWeight:700,whiteSpace:'nowrap',flexShrink:0},
+      hScore:{display:'flex',alignItems:'baseline',gap:2,flexShrink:0},
+      hScoreNum:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:22,color:'#f0883e',lineHeight:1},
+      hScorePts:{fontSize:11,color:'#484f58',fontWeight:700},
+      hRound:{fontSize:11,color:'#484f58',fontWeight:600,marginLeft:4},
+      hModes:{display:'flex',gap:6,flexShrink:0},
+      mPill:{padding:'4px 10px',border:'1px solid #30363d',borderRadius:16,background:'transparent',color:'#484f58',cursor:'pointer',fontSize:14,fontFamily:"'Baloo 2',cursive",fontWeight:700,transition:'all .15s',whiteSpace:'nowrap'},
+      mPillG:{background:'rgba(56,139,73,.18)',borderColor:'rgba(56,139,73,.5)',color:'#56d364'},
+      mPillR:{background:'rgba(248,81,73,.12)',borderColor:'rgba(248,81,73,.45)',color:'#ff7b72'},
+      targetBox:{textAlign:'center',padding:'14px 12px 4px',background:'#161b22',borderBottom:'1px solid #21262d'},
+      targetLbl:{fontSize:9,letterSpacing:3,color:'#484f58',fontWeight:700,marginBottom:2},
+      targetVal:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:54,lineHeight:1,background:'linear-gradient(130deg,#f0883e,#e3b341)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',animation:'targetPop .4s cubic-bezier(.34,1.56,.64,1)',display:'inline-block'},
+      card:{margin:'8px 12px 0',background:'#161b22',border:'1px solid #21262d',borderRadius:12,padding:'11px',display:'flex',flexDirection:'column',gap:8},
+      cardRow:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8},
+      cardLbl:{fontSize:9,letterSpacing:2.5,color:'#484f58',fontWeight:700,flexShrink:0},
+      rerollBtn:{background:'rgba(121,192,255,.07)',border:'1px solid rgba(121,192,255,.18)',borderRadius:7,color:'#79c0ff',padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,fontFamily:"'Baloo 2',cursive",whiteSpace:'nowrap',flexShrink:0},
+      numsWrap:{display:'flex',flexWrap:'wrap',gap:7},
+      numTile:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:17,padding:'7px 13px',background:'#21262d',border:'1.5px solid #30363d',borderRadius:9,color:'#e6edf3',cursor:'pointer',transition:'all .12s',minWidth:42,textAlign:'center',lineHeight:1,flexShrink:0},
+      numTileOff:{background:'#0d1117',borderColor:'#1c2128',color:'#30363d',cursor:'not-allowed',textDecoration:'line-through'},
+      opsWrap:{display:'flex',flexWrap:'wrap',gap:7},
+      opTile:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:17,padding:'7px 13px',background:'rgba(56,139,73,.1)',border:'1.5px solid rgba(56,139,73,.28)',borderRadius:9,color:'#56d364',cursor:'pointer',transition:'all .12s',minWidth:42,textAlign:'center',lineHeight:1,flexShrink:0},
+      exprBox:{minHeight:44,background:'#0d1117',border:'1.5px solid #30363d',borderRadius:9,padding:'9px 12px',display:'flex',alignItems:'center',wordBreak:'break-all'},
+      exprTxt:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:20,color:'#e6edf3',letterSpacing:'.5px',lineHeight:1.4},
+      exprPh:{fontFamily:"'Baloo 2',cursive",fontSize:12,color:'#30363d',fontStyle:'italic'},
+      exprResultRow:{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',background:'rgba(121,192,255,.05)',border:'1px solid rgba(121,192,255,.12)',borderRadius:7},
+      exprEq:{color:'#484f58',fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:15},
+      exprRVal:{color:'#79c0ff',fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:18},
+      microBtn:{background:'#21262d',border:'1px solid #30363d',borderRadius:6,color:'#8b949e',width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:13,flexShrink:0},
+      microBtnR:{background:'rgba(248,81,73,.07)',border:'1px solid rgba(248,81,73,.22)',borderRadius:6,color:'#ff7b72',width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:12,flexShrink:0},
+      fb:{margin:'6px 12px 0',padding:'10px 13px',borderRadius:10,fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:7,animation:'slideIn .3s ease',lineHeight:1.4,flexWrap:'wrap'},
+      fbOk:{background:'rgba(56,139,73,.13)',border:'1px solid rgba(56,139,73,.38)',color:'#56d364'},
+      fbBad:{background:'rgba(248,81,73,.1)',border:'1px solid rgba(248,81,73,.3)',color:'#ff7b72'},
+      fbWarn:{background:'rgba(210,153,34,.09)',border:'1px solid rgba(210,153,34,.28)',color:'#e3b341'},
+      revealedBox:{margin:'8px 12px 0',padding:'14px',background:'rgba(121,192,255,.05)',border:'1.5px solid rgba(121,192,255,.2)',borderRadius:12,animation:'revealFade .4s ease'},
+      revealedLabel:{fontSize:9,letterSpacing:2.5,color:'#484f58',fontWeight:700,marginBottom:8},
+      revealedSolution:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:18,color:'#79c0ff',wordBreak:'break-word',lineHeight:1.5},
+      hintBox:{margin:'6px 12px 0',padding:'11px 12px',background:'rgba(121,192,255,.04)',border:'1px solid rgba(121,192,255,.13)',borderRadius:10,animation:'slideIn .3s ease'},
+      hintRevealBtn:{background:'rgba(121,192,255,.12)',border:'1px solid rgba(121,192,255,.25)',borderRadius:6,color:'#79c0ff',padding:'3px 10px',cursor:'pointer',fontSize:11,fontWeight:700,fontFamily:"'Baloo 2',cursive"},
+      hintResetBtn:{background:'#21262d',border:'1px solid #30363d',borderRadius:6,color:'#8b949e',padding:'3px 8px',cursor:'pointer',fontSize:12,fontFamily:"'Baloo 2',cursive"},
+      actions:{display:'flex',gap:7,padding:'8px 12px 0',alignItems:'stretch'},
+      btnHint:{background:'transparent',border:'1px solid #30363d',borderRadius:9,color:'#8b949e',padding:'0 12px',cursor:'pointer',fontSize:16,fontFamily:"'Baloo 2',cursive",fontWeight:700,whiteSpace:'nowrap',flexShrink:0,height:44,display:'flex',alignItems:'center'},
+      btnReveal:{background:'rgba(210,153,34,.1)',border:'1px solid rgba(210,153,34,.28)',borderRadius:9,color:'#e3b341',padding:'0 13px',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:"'Baloo 2',cursive",whiteSpace:'nowrap',flexShrink:0,height:44,display:'flex',alignItems:'center',gap:5},
+      btnVerify:{flex:1,background:'linear-gradient(135deg,#238636,#2ea043)',border:'none',borderRadius:9,color:'#fff',fontSize:15,fontWeight:800,fontFamily:"'Baloo 2',cursive",cursor:'pointer',height:44,letterSpacing:'.3px',boxShadow:'0 4px 14px rgba(46,160,67,.3)'},
+      btnNext:{flex:1,background:'linear-gradient(135deg,#f0883e,#e3b341)',border:'none',borderRadius:9,color:'#0d1117',fontSize:15,fontWeight:800,fontFamily:"'Baloo 2',cursive",cursor:'pointer',height:44,letterSpacing:'.3px',boxShadow:'0 4px 14px rgba(240,136,62,.3)'},
+    };
+
+    /* ── APP ────────────────────────────────────────────────────────────────── */
+    const OPS=['+','−','×','÷','(',')'];
+
+    function App(){
+      const[splashDone,setSplashDone]=useState(false);
+      const[screen,setScreen]=useState('welcome');
+      const[mode,setMode]=useState(null);
+      const[puzzle,setPuzzle]=useState(null);
+      const[expr,setExpr]=useState('');
+      const[evalRes,setEvalRes]=useState(null);
+      const[status,setStatus]=useState(null);
+      const[score,setScore]=useState(0);
+      const[round,setRound]=useState(1);
+      const[confetti,setConfetti]=useState(false);
+      const[shake,setShake]=useState(false);
+      const[showHint,setShowHint]=useState(false);
+
+      const loadPuzzle=useCallback((m)=>{
+        setPuzzle(m==='simple'?genSimple():genComplex());
+        setExpr('');setEvalRes(null);setStatus(null);setShowHint(false);
+      },[]);
+
+      const startGame=(m)=>{setMode(m);setScore(0);setRound(1);loadPuzzle(m);setScreen('game');};
+      const switchMode=(m)=>{if(m===mode)return;setMode(m);loadPuzzle(m);};
+      const reroll=()=>loadPuzzle(mode);
+      const nextRound=()=>{setRound(r=>r+1);loadPuzzle(mode);};
+
+      const addToken=(v)=>{setExpr(e=>e+v);setStatus(null);setEvalRes(null);};
+      const delLast=()=>{
+        setExpr(e=>{const m=e.match(/^([\s\S]*?)(\d+\.?\d*|[^\d])$/);return m?m[1]:e.slice(0,-1);});
+        setStatus(null);setEvalRes(null);
+      };
+      const clearAll=()=>{setExpr('');setStatus(null);setEvalRes(null);};
+
+      const verify=()=>{
+        if(!expr.trim()||!puzzle) return;
+        const used=extractNums(expr),avail=[...puzzle.numbers];
+        let ok=true;
+        for(const n of used){const i=avail.indexOf(n);if(i===-1){ok=false;break;}avail.splice(i,1);}
+        if(!ok){setStatus('invalid');trigShake();return;}
+        const res=safeEval(expr);
+        if(res===null){setStatus('invalid');trigShake();return;}
+        setEvalRes(res);
+        if(Math.round(res*100)/100===Math.round(puzzle.target*100)/100){
+          setStatus('correct');setScore(s=>s+1);setConfetti(true);setTimeout(()=>setConfetti(false),3500);
+        }else{setStatus('wrong');trigShake();}
+      };
+
+      const showAnswer=()=>{setStatus('revealed');setShowHint(true);};
+      const trigShake=()=>{setShake(true);setTimeout(()=>setShake(false),500);};
+
+      const usedNums=extractNums(expr);
+      const isUsed=(n,idx)=>{
+        if(!puzzle) return false;
+        const cnt=usedNums.filter(x=>x===n).length;
+        const idxs=puzzle.numbers.reduce((a,v,i)=>{if(v===n)a.push(i);return a;},[]);
+        return idxs.slice(0,cnt).includes(idx);
+      };
+
+      if(!splashDone) return <SplashScreen onDone={()=>setSplashDone(true)}/>;
+
+      if(screen==='welcome') return(
+        <div style={p.page}>
+          <div style={p.wOuter}>
+            <div style={p.wCard}>
+              <div style={p.wLogoWrap}>🔢</div>
+              <h1 style={p.wTitle}>Numérogique</h1>
+              <p style={p.wSub}>Retrouve le nombre cible en combinant les nombres donnés avec les opérations de ton choix.</p>
+              <div style={p.wDivider}/>
+              <div style={p.wSmallLabel}>CHOISIS TON MODE</div>
+              <div style={p.wModes}>
+                <button style={p.mBtnG} onClick={()=>startGame('simple')} className="mBtn">
+                  <span style={{fontSize:26}}>🟢</span>
+                  <strong style={p.mBtnName}>Simple</strong>
+                  <span style={p.mBtnDesc}>Entiers uniquement<br/>ex : 2 · 50 · 90</span>
+                </button>
+                <button style={p.mBtnR} onClick={()=>startGame('complex')} className="mBtn">
+                  <span style={{fontSize:26}}>🔴</span>
+                  <strong style={p.mBtnName}>Compliqué</strong>
+                  <span style={p.mBtnDesc}>Décimaux inclus<br/>ex : 2.5 · 3.14</span>
+                </button>
+              </div>
+              <div style={p.wRules}>
+                {['🔂 Chaque nombre : 1 seule fois','♾️ Opérations illimitées','📐 Parenthèses autorisées'].map(r=>(
+                  <div key={r} style={p.wRule}>{r}</div>
+                ))}
+              </div>
+              <div style={p.wPlatforms}>
+                <span style={{fontSize:14,color:'#484f58',fontFamily:"'Baloo 2',cursive"}}>🖥️ Disponible sur tous tes appareils</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const isRevealed=status==='revealed';
+      const isCorrect=status==='correct';
+
+      return(
+        <div style={p.page}>
+          <Confetti active={confetti}/>
+          <header style={p.header}>
+            <button style={p.hBtn} onClick={()=>setScreen('welcome')}>← Menu</button>
+            <div style={p.hScore}>
+              <span style={p.hScoreNum}>{score}</span>
+              <span style={p.hScorePts}>pts</span>
+              <span style={p.hRound}>· T{round}</span>
+            </div>
+            <div style={p.hModes}>
+              <button style={{...p.mPill,...(mode==='simple'?p.mPillG:{})}} onClick={()=>switchMode('simple')}>🟢</button>
+              <button style={{...p.mPill,...(mode==='complex'?p.mPillR:{})}} onClick={()=>switchMode('complex')}>🔴</button>
+            </div>
+          </header>
+
+          <div style={p.targetBox}>
+            <div style={p.targetLbl}>NOMBRE CIBLE</div>
+            <div style={p.targetVal} key={puzzle?.target}>{puzzle?.target}</div>
+          </div>
+
+          <div style={p.card}>
+            <div style={p.cardRow}>
+              <span style={p.cardLbl}>TES NOMBRES</span>
+              <button style={p.rerollBtn} onClick={reroll}>🎲 Nouveau tirage</button>
+            </div>
+            <div style={p.numsWrap}>
+              {puzzle?.numbers.map((n,i)=>{
+                const used=isUsed(n,i);
+                return(
+                  <button key={i} style={{...p.numTile,...(used?p.numTileOff:{})}} onClick={()=>!used&&addToken(String(n))} disabled={used}>{n}</button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={p.card}>
+            <div style={p.cardLbl}>OPÉRATIONS — ILLIMITÉES</div>
+            <div style={p.opsWrap}>
+              {OPS.map(op=>(<button key={op} style={p.opTile} onClick={()=>addToken(op)}>{op}</button>))}
+            </div>
+          </div>
+
+          {!isRevealed&&(
+            <div style={{...p.card,...(shake?{animation:'shake .45s ease'}:{})}}>
+              <div style={p.cardRow}>
+                <span style={p.cardLbl}>TON CALCUL</span>
+                <div style={{display:'flex',gap:6}}>
+                  <button style={p.microBtn} onClick={delLast}>⌫</button>
+                  <button style={p.microBtnR} onClick={clearAll}>✕</button>
+                </div>
+              </div>
+              <div style={p.exprBox}>
+                {expr?<span style={p.exprTxt}>{expr}</span>:<span style={p.exprPh}>Appuie sur les nombres puis les opérations…</span>}
+              </div>
+              {evalRes!==null&&(
+                <div style={p.exprResultRow}>
+                  <span style={p.exprEq}>=&nbsp;</span>
+                  <span style={p.exprRVal}>{Math.round(evalRes*100)/100}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {status&&status!=='revealed'&&(
+            <div style={{...p.fb,...(isCorrect?p.fbOk:status==='wrong'?p.fbBad:p.fbWarn)}}>
+              {isCorrect&&<>🎉 Bravo ! C'est la bonne réponse !</>}
+              {status==='wrong'&&<>❌ {Math.round(evalRes*100)/100} ≠ {puzzle.target} — Réessaie !</>}
+              {status==='invalid'&&<>⚠️ Expression invalide ou nombres mal utilisés</>}
+            </div>
+          )}
+
+          {isRevealed&&(
+            <div style={p.revealedBox}>
+              <div style={p.revealedLabel}>💡 VOICI UNE SOLUTION</div>
+              <div style={p.revealedSolution}>{puzzle?.solution} = {puzzle?.target}</div>
+              <div style={{fontSize:12,color:'#484f58',marginTop:4,fontFamily:"'Baloo 2',cursive"}}>Il peut exister d'autres solutions valides !</div>
+            </div>
+          )}
+
+          {showHint&&!isRevealed&&puzzle&&(
+            <HintReveal solution={`${puzzle.solution} = ${puzzle.target}`}/>
+          )}
+
+          <div style={p.actions}>
+            {!isRevealed&&!isCorrect&&(
+              <button style={p.btnHint} onClick={()=>setShowHint(h=>!h)}>{showHint?'🙈':'💡'}</button>
+            )}
+            {!isRevealed&&!isCorrect&&(
+              <button style={p.btnReveal} onClick={showAnswer}>👁 Réponse</button>
+            )}
+            {isCorrect||isRevealed
+              ?<button style={p.btnNext} onClick={nextRound} className="pulseBtn">Suivant →</button>
+              :<button style={p.btnVerify} onClick={verify}>Vérifier ✓</button>
+            }
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
