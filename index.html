@@ -24,6 +24,9 @@
     .pulseBtn{animation:glow 1.4s infinite}
     button:active{opacity:.8}
     button:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}
+    .litInput{width:100%;background:#0d1117;border:1.5px solid #30363d;border-radius:9px;padding:10px 14px;color:#e6edf3;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;outline:none;transition:border-color .2s}
+    .litInput:focus{border-color:#79c0ff}
+    .litInput::placeholder{color:#30363d;font-family:'Baloo 2',cursive;font-size:13px;font-weight:400}
   </style>
 </head>
 <body>
@@ -37,7 +40,7 @@
     const rp=(a)=>a[ri(a.length)];
     const rs=(a)=>[...a].sort(()=>rand()-.5);
 
-    /* ── GÉNÉRATION ─────────────────────────────────────────────────────────── */
+    /* ── GÉNÉRATION NUMÉRIQUE ───────────────────────────────────────────────── */
     function generateSolution(nums, decimal) {
       const ops=['+','-','*','/'];
       const dispOps={'+':'+','-':'−','*':'×','/':'÷'};
@@ -78,7 +81,59 @@
       return {numbers:nums,target,solution};
     }
 
-    /* ── EVAL ───────────────────────────────────────────────────────────────── */
+    /* ── GÉNÉRATION EXPRESSIONS LITTÉRALES ──────────────────────────────────── */
+    function normAnswer(s){
+      return s.trim().toLowerCase().replace(/\s+/g,'').replace(/\*\*/g,'^').replace(/x/g,'x').replace(/−/g,'-');
+    }
+    function checkLitAnswer(userRaw, correctVariants){
+      const u=normAnswer(userRaw);
+      return correctVariants.some(v=>normAnswer(v)===u);
+    }
+
+    const LIT_COLLEGE=[
+      {type:'résoudre',niveau:'collège',question:'2x + 3 = 11',answer:['x=4','4'],hint:'Soustrais 3 des deux côtés, puis divise par 2'},
+      {type:'résoudre',niveau:'collège',question:'3x − 6 = 9',answer:['x=5','5'],hint:'Ajoute 6 des deux côtés, puis divise par 3'},
+      {type:'résoudre',niveau:'collège',question:'5x + 2 = 17',answer:['x=3','3'],hint:'Soustrais 2, puis divise par 5'},
+      {type:'résoudre',niveau:'collège',question:'4x − 8 = 0',answer:['x=2','2'],hint:'Ajoute 8, puis divise par 4'},
+      {type:'résoudre',niveau:'collège',question:'x/2 + 1 = 5',answer:['x=8','8'],hint:'Soustrais 1, puis multiplie par 2'},
+      {type:'résoudre',niveau:'collège',question:'7x = 42',answer:['x=6','6'],hint:'Divise les deux côtés par 7'},
+      {type:'résoudre',niveau:'collège',question:'2x + 5 = x + 9',answer:['x=4','4'],hint:'Regroupe les x d\'un côté, les nombres de l\'autre'},
+      {type:'résoudre',niveau:'collège',question:'3(x + 2) = 15',answer:['x=3','3'],hint:'Développe d\'abord, puis résous'},
+      {type:'simplifier',niveau:'collège',question:'3x + 2x',answer:['5x'],hint:'Additionne les coefficients devant x'},
+      {type:'simplifier',niveau:'collège',question:'7x − 3x',answer:['4x'],hint:'Soustrais les coefficients'},
+      {type:'simplifier',niveau:'collège',question:'4x + 2 + 3x − 5',answer:['7x-3','7x−3'],hint:'Regroupe les x ensemble, les nombres ensemble'},
+      {type:'simplifier',niveau:'collège',question:'2(x + 3) + x',answer:['3x+6'],hint:'Développe 2(x+3) d\'abord'},
+      {type:'simplifier',niveau:'collège',question:'5x + 3 − 2x + 7',answer:['3x+10'],hint:'Regroupe les termes en x et les constantes'},
+      {type:'simplifier',niveau:'collège',question:'4(2x − 1)',answer:['8x-4','8x−4'],hint:'Distribue 4 à chaque terme'},
+      {type:'développer',niveau:'collège',question:'(x + 2)(x + 3)',answer:['x^2+5x+6','x2+5x+6'],hint:'Utilise (a+b)(c+d) = ac + ad + bc + bd'},
+      {type:'développer',niveau:'collège',question:'(x + 1)(x + 4)',answer:['x^2+5x+4','x2+5x+4'],hint:'Développe terme par terme'},
+      {type:'développer',niveau:'collège',question:'(x − 2)(x + 5)',answer:['x^2+3x-10','x2+3x-10'],hint:'Attention aux signes'},
+      {type:'développer',niveau:'collège',question:'(x + 3)²',answer:['x^2+6x+9','x2+6x+9'],hint:'(a+b)² = a² + 2ab + b²'},
+    ];
+
+    const LIT_LYCEE=[
+      {type:'résoudre',niveau:'lycée',question:'x² − 5x + 6 = 0',answer:['x=2etx=3','x=3etx=2','x=2;x=3','x=3;x=2','x=2,x=3'],hint:'Cherche deux nombres dont le produit est 6 et la somme est 5'},
+      {type:'résoudre',niveau:'lycée',question:'2x² − 8 = 0',answer:['x=2etx=-2','x=-2etx=2','x=2;x=-2'],hint:'Isole x², puis prends la racine carrée'},
+      {type:'résoudre',niveau:'lycée',question:'x² + 4x + 4 = 0',answer:['x=-2'],hint:'Remarque que c\'est un carré parfait'},
+      {type:'résoudre',niveau:'lycée',question:'log(x) = 2',answer:['x=100','100'],hint:'log en base 10 : 10² = ?'},
+      {type:'résoudre',niveau:'lycée',question:'2^x = 16',answer:['x=4','4'],hint:'16 = 2^?'},
+      {type:'résoudre',niveau:'lycée',question:'x² − 9 = 0',answer:['x=3etx=-3','x=-3etx=3','x=3;x=-3'],hint:'Identité remarquable : a²−b²=(a−b)(a+b)'},
+      {type:'factoriser',niveau:'lycée',question:'x² − 4',answer:['(x-2)(x+2)','(x+2)(x-2)'],hint:'Identité : a²−b² = (a−b)(a+b)'},
+      {type:'factoriser',niveau:'lycée',question:'x² + 6x + 9',answer:['(x+3)^2','(x+3)2'],hint:'Carré parfait : (a+b)² = a²+2ab+b²'},
+      {type:'factoriser',niveau:'lycée',question:'x² − 10x + 25',answer:['(x-5)^2','(x-5)2'],hint:'Carré parfait : repère a=x, b=5'},
+      {type:'factoriser',niveau:'lycée',question:'2x² + 4x',answer:['2x(x+2)'],hint:'Mets 2x en facteur commun'},
+      {type:'factoriser',niveau:'lycée',question:'x² − 1',answer:['(x-1)(x+1)','(x+1)(x-1)'],hint:'a²−1 = (a−1)(a+1)'},
+      {type:'développer',niveau:'lycée',question:'(2x + 1)(3x − 2)',answer:['6x^2-x-2','6x2-x-2'],hint:'Développe terme à terme'},
+      {type:'développer',niveau:'lycée',question:'(x + y)²',answer:['x^2+2xy+y^2','x2+2xy+y2'],hint:'(a+b)² = a²+2ab+b²'},
+      {type:'développer',niveau:'lycée',question:'(3x − 1)²',answer:['9x^2-6x+1','9x2-6x+1'],hint:'(a−b)² = a²−2ab+b²'},
+    ];
+
+    function genLiteral(niveau){
+      const pool=niveau==='collège'?LIT_COLLEGE:niveau==='lycée'?LIT_LYCEE:[...LIT_COLLEGE,...LIT_LYCEE];
+      return rp(pool);
+    }
+
+    /* ── EVAL NUMÉRIQUE ─────────────────────────────────────────────────────── */
     function safeEval(expr){
       try{
         let e=expr.replace(/−/g,'-').replace(/×/g,'*').replace(/÷/g,'/');
@@ -105,7 +160,7 @@
         let fr;
         const draw=()=>{
           ctx.clearRect(0,0,c.width,c.height);
-          ps.forEach(p=>{p.ta+=p.ts;p.y+=p.d;p.x+=Math.sin(p.ta)*1.5;ctx.beginPath();ctx.lineWidth=p.r;ctx.strokeStyle=p.color;ctx.moveTo(p.x+Math.sin(p.ta)*12+p.r/3,p.y);ctx.lineTo(p.x+Math.sin(p.ta)*12,p.y+Math.sin(p.ta)*12+p.r/5);ctx.stroke();});
+          ps.forEach(q=>{q.ta+=q.ts;q.y+=q.d;q.x+=Math.sin(q.ta)*1.5;ctx.beginPath();ctx.lineWidth=q.r;ctx.strokeStyle=q.color;ctx.moveTo(q.x+Math.sin(q.ta)*12+q.r/3,q.y);ctx.lineTo(q.x+Math.sin(q.ta)*12,q.y+Math.sin(q.ta)*12+q.r/5);ctx.stroke();});
           fr=requestAnimationFrame(draw);
         };
         draw();
@@ -144,7 +199,6 @@
     /* ── HINT REVEAL ────────────────────────────────────────────────────────── */
     function tokeniseSolution(solution){return solution.split(' ').filter(t=>t.length>0);}
     function tokenColor(tok){return['+','−','×','÷','='].includes(tok)?'#f0883e':'#79c0ff';}
-
     function HintReveal({solution}){
       const tokens=tokeniseSolution(solution);
       const[revealed,setRevealed]=useState(0);
@@ -162,12 +216,9 @@
           </div>
           <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:6,minHeight:36}}>
             {tokens.map((tok,i)=>{
-              const vis=i<revealed;
-              const fresh=i===revealed-1;
+              const vis=i<revealed;const fresh=i===revealed-1;
               const isOp=['+','−','×','÷','='].includes(tok);
-              return(
-                <span key={i} style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:18,display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:Math.max(28,tok.length*11),height:34,borderRadius:7,padding:'0 6px',background:vis?'rgba(121,192,255,.08)':'#1c2128',border:vis?`1.5px solid ${isOp?'rgba(240,136,62,.4)':'rgba(121,192,255,.25)'}`:'1.5px solid #21262d',color:vis?tokenColor(tok):'transparent',transition:'all .25s ease',transform:fresh?'scale(1.14)':'scale(1)',boxShadow:fresh?`0 0 14px ${isOp?'rgba(240,136,62,.35)':'rgba(121,192,255,.3)'}`:'none',userSelect:'none'}}>{vis?tok:'?'}</span>
-              );
+              return(<span key={i} style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:18,display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:Math.max(28,tok.length*11),height:34,borderRadius:7,padding:'0 6px',background:vis?'rgba(121,192,255,.08)':'#1c2128',border:vis?`1.5px solid ${isOp?'rgba(240,136,62,.4)':'rgba(121,192,255,.25)'}`:'1.5px solid #21262d',color:vis?tokenColor(tok):'transparent',transition:'all .25s ease',transform:fresh?'scale(1.14)':'scale(1)',boxShadow:fresh?`0 0 14px ${isOp?'rgba(240,136,62,.35)':'rgba(121,192,255,.3)'}`:'none',userSelect:'none'}}>{vis?tok:'?'}</span>);
             })}
           </div>
           <div style={{marginTop:10,display:'flex',alignItems:'center',gap:8}}>
@@ -185,17 +236,19 @@
     const p={
       page:{minHeight:'100vh',background:'#0d1117',color:'#e6edf3',fontFamily:"'Baloo 2',cursive",display:'flex',flexDirection:'column',overflowX:'hidden',paddingBottom:16},
       wOuter:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px 14px',minHeight:'100vh'},
-      wCard:{width:'100%',maxWidth:420,background:'#161b22',border:'1px solid #30363d',borderRadius:18,padding:'28px 22px',display:'flex',flexDirection:'column',alignItems:'center',gap:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',animation:'popUp .4s ease'},
+      wCard:{width:'100%',maxWidth:440,background:'#161b22',border:'1px solid #30363d',borderRadius:18,padding:'28px 22px',display:'flex',flexDirection:'column',alignItems:'center',gap:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',animation:'popUp .4s ease'},
       wLogoWrap:{width:72,height:72,background:'linear-gradient(135deg,#238636,#2ea043)',borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',fontSize:38,boxShadow:'0 8px 24px rgba(46,160,67,.4)'},
       wTitle:{fontFamily:"'Baloo 2',cursive",fontWeight:800,fontSize:32,letterSpacing:'-.5px',background:'linear-gradient(130deg,#79c0ff,#56d364,#f0883e)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',textAlign:'center'},
       wSub:{fontSize:13,color:'#8b949e',textAlign:'center',lineHeight:1.6,maxWidth:320},
       wDivider:{width:'100%',height:1,background:'#21262d'},
       wSmallLabel:{fontSize:10,letterSpacing:2.5,color:'#484f58',fontWeight:700},
       wModes:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,width:'100%'},
+      wModesLit:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,width:'100%'},
       mBtnG:{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'16px 10px',background:'rgba(56,139,73,.1)',border:'1.5px solid rgba(56,139,73,.3)',borderRadius:12,color:'#e6edf3',cursor:'pointer',fontFamily:"'Baloo 2',cursive",width:'100%'},
       mBtnR:{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'16px 10px',background:'rgba(248,81,73,.08)',border:'1.5px solid rgba(248,81,73,.25)',borderRadius:12,color:'#e6edf3',cursor:'pointer',fontFamily:"'Baloo 2',cursive",width:'100%'},
+      mBtnB:{display:'flex',flexDirection:'column',alignItems:'center',gap:5,padding:'12px 8px',background:'rgba(121,192,255,.07)',border:'1.5px solid rgba(121,192,255,.22)',borderRadius:12,color:'#e6edf3',cursor:'pointer',fontFamily:"'Baloo 2',cursive",width:'100%'},
       mBtnName:{fontSize:17,fontWeight:800},
-      mBtnDesc:{fontSize:11,color:'#8b949e',textAlign:'center',lineHeight:1.5},
+      mBtnDesc:{fontSize:10,color:'#8b949e',textAlign:'center',lineHeight:1.5},
       wRules:{width:'100%',background:'#0d1117',borderRadius:10,padding:'10px 14px',border:'1px solid #21262d',display:'flex',flexDirection:'column',gap:5},
       wRule:{fontSize:12,color:'#8b949e'},
       wPlatforms:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'#0d1117',borderRadius:10,border:'1px solid #21262d',width:'100%',justifyContent:'center'},
@@ -206,12 +259,14 @@
       hScorePts:{fontSize:11,color:'#484f58',fontWeight:700},
       hRound:{fontSize:11,color:'#484f58',fontWeight:600,marginLeft:4},
       hModes:{display:'flex',gap:6,flexShrink:0},
-      mPill:{padding:'4px 10px',border:'1px solid #30363d',borderRadius:16,background:'transparent',color:'#484f58',cursor:'pointer',fontSize:14,fontFamily:"'Baloo 2',cursive",fontWeight:700,transition:'all .15s',whiteSpace:'nowrap'},
+      mPill:{padding:'4px 8px',border:'1px solid #30363d',borderRadius:16,background:'transparent',color:'#484f58',cursor:'pointer',fontSize:13,fontFamily:"'Baloo 2',cursive",fontWeight:700,transition:'all .15s',whiteSpace:'nowrap'},
       mPillG:{background:'rgba(56,139,73,.18)',borderColor:'rgba(56,139,73,.5)',color:'#56d364'},
       mPillR:{background:'rgba(248,81,73,.12)',borderColor:'rgba(248,81,73,.45)',color:'#ff7b72'},
+      mPillB:{background:'rgba(121,192,255,.12)',borderColor:'rgba(121,192,255,.4)',color:'#79c0ff'},
       targetBox:{textAlign:'center',padding:'14px 12px 4px',background:'#161b22',borderBottom:'1px solid #21262d'},
       targetLbl:{fontSize:9,letterSpacing:3,color:'#484f58',fontWeight:700,marginBottom:2},
       targetVal:{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:54,lineHeight:1,background:'linear-gradient(130deg,#f0883e,#e3b341)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',animation:'targetPop .4s cubic-bezier(.34,1.56,.64,1)',display:'inline-block'},
+      litQuestionBox:{textAlign:'center',padding:'16px 16px 12px',background:'#161b22',borderBottom:'1px solid #21262d'},
       card:{margin:'8px 12px 0',background:'#161b22',border:'1px solid #21262d',borderRadius:12,padding:'11px',display:'flex',flexDirection:'column',gap:8},
       cardRow:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8},
       cardLbl:{fontSize:9,letterSpacing:2.5,color:'#484f58',fontWeight:700,flexShrink:0},
@@ -246,6 +301,15 @@
       btnNext:{flex:1,background:'linear-gradient(135deg,#f0883e,#e3b341)',border:'none',borderRadius:9,color:'#0d1117',fontSize:15,fontWeight:800,fontFamily:"'Baloo 2',cursive",cursor:'pointer',height:44,letterSpacing:'.3px',boxShadow:'0 4px 14px rgba(240,136,62,.3)'},
     };
 
+    const TYPE_COLORS={
+      'résoudre':{bg:'rgba(121,192,255,.12)',border:'rgba(121,192,255,.3)',color:'#79c0ff'},
+      'simplifier':{bg:'rgba(56,139,73,.12)',border:'rgba(56,139,73,.3)',color:'#56d364'},
+      'développer':{bg:'rgba(240,136,62,.12)',border:'rgba(240,136,62,.3)',color:'#f0883e'},
+      'factoriser':{bg:'rgba(210,153,34,.12)',border:'rgba(210,153,34,.3)',color:'#e3b341'},
+    };
+    const TYPE_ICONS={'résoudre':'🔍','simplifier':'✂️','développer':'📐','factoriser':'🧩'};
+    const NIV_COLORS={'collège':'#56d364','lycée':'#ff7b72'};
+
     /* ── APP ────────────────────────────────────────────────────────────────── */
     const OPS=['+','−','×','÷','(',')'];
 
@@ -253,8 +317,11 @@
       const[splashDone,setSplashDone]=useState(false);
       const[screen,setScreen]=useState('welcome');
       const[mode,setMode]=useState(null);
+      const[litNiveau,setLitNiveau]=useState(null);
       const[puzzle,setPuzzle]=useState(null);
+      const[litPuzzle,setLitPuzzle]=useState(null);
       const[expr,setExpr]=useState('');
+      const[litAnswer,setLitAnswer]=useState('');
       const[evalRes,setEvalRes]=useState(null);
       const[status,setStatus]=useState(null);
       const[score,setScore]=useState(0);
@@ -263,23 +330,18 @@
       const[shake,setShake]=useState(false);
       const[showHint,setShowHint]=useState(false);
 
+      // ── Numérique ──
       const loadPuzzle=useCallback((m)=>{
         setPuzzle(m==='simple'?genSimple():genComplex());
         setExpr('');setEvalRes(null);setStatus(null);setShowHint(false);
       },[]);
-
       const startGame=(m)=>{setMode(m);setScore(0);setRound(1);loadPuzzle(m);setScreen('game');};
       const switchMode=(m)=>{if(m===mode)return;setMode(m);loadPuzzle(m);};
       const reroll=()=>loadPuzzle(mode);
       const nextRound=()=>{setRound(r=>r+1);loadPuzzle(mode);};
-
       const addToken=(v)=>{setExpr(e=>e+v);setStatus(null);setEvalRes(null);};
-      const delLast=()=>{
-        setExpr(e=>{const m=e.match(/^([\s\S]*?)(\d+\.?\d*|[^\d])$/);return m?m[1]:e.slice(0,-1);});
-        setStatus(null);setEvalRes(null);
-      };
+      const delLast=()=>{setExpr(e=>{const m=e.match(/^([\s\S]*?)(\d+\.?\d*|[^\d])$/);return m?m[1]:e.slice(0,-1);});setStatus(null);setEvalRes(null);};
       const clearAll=()=>{setExpr('');setStatus(null);setEvalRes(null);};
-
       const verify=()=>{
         if(!expr.trim()||!puzzle) return;
         const used=extractNums(expr),avail=[...puzzle.numbers];
@@ -293,8 +355,25 @@
           setStatus('correct');setScore(s=>s+1);setConfetti(true);setTimeout(()=>setConfetti(false),3500);
         }else{setStatus('wrong');trigShake();}
       };
-
       const showAnswer=()=>{setStatus('revealed');setShowHint(true);};
+
+      // ── Littéral ──
+      const loadLitPuzzle=useCallback((niv)=>{
+        setLitPuzzle(genLiteral(niv));
+        setLitAnswer('');setStatus(null);setShowHint(false);
+      },[]);
+      const startLitGame=(niv)=>{setLitNiveau(niv);setScore(0);setRound(1);loadLitPuzzle(niv);setScreen('litGame');};
+      const switchLitNiveau=(niv)=>{if(niv===litNiveau)return;setLitNiveau(niv);loadLitPuzzle(niv);};
+      const rerollLit=()=>loadLitPuzzle(litNiveau);
+      const nextLitRound=()=>{setRound(r=>r+1);loadLitPuzzle(litNiveau);};
+      const verifyLit=()=>{
+        if(!litAnswer.trim()||!litPuzzle) return;
+        if(checkLitAnswer(litAnswer,litPuzzle.answer)){
+          setStatus('correct');setScore(s=>s+1);setConfetti(true);setTimeout(()=>setConfetti(false),3500);
+        }else{setStatus('wrong');trigShake();}
+      };
+      const showLitAnswer=()=>setStatus('revealed');
+
       const trigShake=()=>{setShake(true);setTimeout(()=>setShake(false),500);};
 
       const usedNums=extractNums(expr);
@@ -307,43 +386,160 @@
 
       if(!splashDone) return <SplashScreen onDone={()=>setSplashDone(true)}/>;
 
+      /* ── WELCOME ── */
       if(screen==='welcome') return(
         <div style={p.page}>
           <div style={p.wOuter}>
             <div style={p.wCard}>
               <div style={p.wLogoWrap}>🔢</div>
               <h1 style={p.wTitle}>Numérogique</h1>
-              <p style={p.wSub}>Retrouve le nombre cible en combinant les nombres donnés avec les opérations de ton choix.</p>
+              <p style={p.wSub}>Entraîne-toi en calcul mental et en algèbre !</p>
               <div style={p.wDivider}/>
-              <div style={p.wSmallLabel}>CHOISIS TON MODE</div>
+              <div style={p.wSmallLabel}>🔢 MODE NUMÉRIQUE</div>
               <div style={p.wModes}>
                 <button style={p.mBtnG} onClick={()=>startGame('simple')} className="mBtn">
-                  <span style={{fontSize:26}}>🟢</span>
+                  <span style={{fontSize:24}}>🟢</span>
                   <strong style={p.mBtnName}>Simple</strong>
                   <span style={p.mBtnDesc}>Entiers uniquement<br/>ex : 2 · 50 · 90</span>
                 </button>
                 <button style={p.mBtnR} onClick={()=>startGame('complex')} className="mBtn">
-                  <span style={{fontSize:26}}>🔴</span>
+                  <span style={{fontSize:24}}>🔴</span>
                   <strong style={p.mBtnName}>Compliqué</strong>
                   <span style={p.mBtnDesc}>Décimaux inclus<br/>ex : 2.5 · 3.14</span>
                 </button>
               </div>
+              <div style={p.wDivider}/>
+              <div style={p.wSmallLabel}>🔡 EXPRESSIONS LITTÉRALES</div>
+              <div style={p.wModesLit}>
+                <button style={p.mBtnB} onClick={()=>startLitGame('collège')} className="mBtn">
+                  <span style={{fontSize:22}}>🏫</span>
+                  <strong style={{...p.mBtnName,fontSize:14}}>Collège</strong>
+                  <span style={p.mBtnDesc}>Résoudre · Simplifier · Développer</span>
+                </button>
+                <button style={p.mBtnB} onClick={()=>startLitGame('lycée')} className="mBtn">
+                  <span style={{fontSize:22}}>🎓</span>
+                  <strong style={{...p.mBtnName,fontSize:14}}>Lycée</strong>
+                  <span style={p.mBtnDesc}>Équations · Factoriser · Développer</span>
+                </button>
+                <button style={p.mBtnB} onClick={()=>startLitGame('mixte')} className="mBtn">
+                  <span style={{fontSize:22}}>🌀</span>
+                  <strong style={{...p.mBtnName,fontSize:14}}>Mixte</strong>
+                  <span style={p.mBtnDesc}>Tout mélangé !</span>
+                </button>
+              </div>
               <div style={p.wRules}>
-                {['🔂 Chaque nombre : 1 seule fois','♾️ Opérations illimitées','📐 Parenthèses autorisées'].map(r=>(
+                {['🔂 Chaque nombre : 1 seule fois (mode numérique)','✏️ Tape ta réponse au clavier (mode littéral)','📐 Utilise ^ pour les puissances · ex : x^2'].map(r=>(
                   <div key={r} style={p.wRule}>{r}</div>
                 ))}
-              </div>
-              <div style={p.wPlatforms}>
-                <span style={{fontSize:14,color:'#484f58',fontFamily:"'Baloo 2',cursive"}}>🖥️ Disponible sur tous tes appareils</span>
               </div>
             </div>
           </div>
         </div>
       );
 
+      /* ── LITTÉRAL GAME ── */
+      if(screen==='litGame'){
+        const isRevealed=status==='revealed';
+        const isCorrect=status==='correct';
+        const tc=litPuzzle?(TYPE_COLORS[litPuzzle.type]||TYPE_COLORS['résoudre']):TYPE_COLORS['résoudre'];
+        return(
+          <div style={p.page}>
+            <Confetti active={confetti}/>
+            <header style={p.header}>
+              <button style={p.hBtn} onClick={()=>setScreen('welcome')}>← Menu</button>
+              <div style={p.hScore}>
+                <span style={p.hScoreNum}>{score}</span>
+                <span style={p.hScorePts}>pts</span>
+                <span style={p.hRound}>· T{round}</span>
+              </div>
+              <div style={p.hModes}>
+                <button style={{...p.mPill,...(litNiveau==='collège'?p.mPillG:{})}} onClick={()=>switchLitNiveau('collège')}>🏫</button>
+                <button style={{...p.mPill,...(litNiveau==='lycée'?p.mPillR:{})}} onClick={()=>switchLitNiveau('lycée')}>🎓</button>
+                <button style={{...p.mPill,...(litNiveau==='mixte'?p.mPillB:{})}} onClick={()=>switchLitNiveau('mixte')}>🌀</button>
+              </div>
+            </header>
+
+            <div style={p.litQuestionBox}>
+              {litPuzzle&&(
+                <>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:10}}>
+                    <span style={{fontSize:9,fontWeight:700,padding:'3px 10px',borderRadius:20,background:tc.bg,border:`1px solid ${tc.border}`,color:tc.color,letterSpacing:1}}>
+                      {TYPE_ICONS[litPuzzle.type]} {litPuzzle.type.toUpperCase()}
+                    </span>
+                    <span style={{fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:20,background:'rgba(255,255,255,.04)',border:'1px solid #21262d',color:NIV_COLORS[litPuzzle.niveau]||'#8b949e',letterSpacing:1}}>
+                      {litPuzzle.niveau.toUpperCase()}
+                    </span>
+                  </div>
+                  <div key={litPuzzle.question} style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,fontSize:28,color:'#e6edf3',animation:'targetPop .4s cubic-bezier(.34,1.56,.64,1)',display:'inline-block'}}>
+                    {litPuzzle.question}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!isRevealed&&(
+              <div style={{...p.card,...(shake?{animation:'shake .45s ease'}:{})}}>
+                <div style={p.cardRow}>
+                  <span style={p.cardLbl}>TA RÉPONSE</span>
+                  <button style={p.rerollBtn} onClick={rerollLit}>🎲 Autre question</button>
+                </div>
+                <input
+                  className="litInput"
+                  type="text"
+                  placeholder="Ex : x=4  ou  5x+3  ou  (x-2)(x+3) …"
+                  value={litAnswer}
+                  onChange={e=>{setLitAnswer(e.target.value);setStatus(null);}}
+                  onKeyDown={e=>{if(e.key==='Enter'&&!isCorrect&&!isRevealed)verifyLit();}}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck="false"
+                />
+                <div style={{fontSize:10,color:'#484f58',fontFamily:"'Baloo 2',cursive"}}>
+                  Utilise ^ pour les puissances (ex : x^2) · Entrée pour valider
+                </div>
+              </div>
+            )}
+
+            {status&&status!=='revealed'&&(
+              <div style={{...p.fb,...(isCorrect?p.fbOk:p.fbBad)}}>
+                {isCorrect?<>🎉 Bravo ! C'est correct !</>:<>❌ Pas tout à fait… Réessaie !</>}
+              </div>
+            )}
+
+            {showHint&&!isRevealed&&litPuzzle&&(
+              <div style={p.hintBox}>
+                <div style={{fontSize:9,fontWeight:700,color:'#484f58',letterSpacing:2,marginBottom:6}}>💡 INDICE</div>
+                <div style={{fontFamily:"'Baloo 2',cursive",fontSize:13,color:'#79c0ff',lineHeight:1.5}}>{litPuzzle.hint}</div>
+              </div>
+            )}
+
+            {isRevealed&&litPuzzle&&(
+              <div style={p.revealedBox}>
+                <div style={p.revealedLabel}>💡 RÉPONSE</div>
+                <div style={p.revealedSolution}>{litPuzzle.answer[0]}</div>
+                <div style={{fontSize:12,color:'#484f58',marginTop:4,fontFamily:"'Baloo 2',cursive"}}>D'autres formes équivalentes peuvent être acceptées.</div>
+              </div>
+            )}
+
+            <div style={p.actions}>
+              {!isRevealed&&!isCorrect&&(
+                <button style={p.btnHint} onClick={()=>setShowHint(h=>!h)}>{showHint?'🙈':'💡'}</button>
+              )}
+              {!isRevealed&&!isCorrect&&(
+                <button style={p.btnReveal} onClick={showLitAnswer}>👁 Réponse</button>
+              )}
+              {isCorrect||isRevealed
+                ?<button style={p.btnNext} onClick={nextLitRound} className="pulseBtn">Suivant →</button>
+                :<button style={p.btnVerify} onClick={verifyLit}>Vérifier ✓</button>
+              }
+            </div>
+          </div>
+        );
+      }
+
+      /* ── NUMÉRIQUE GAME ── */
       const isRevealed=status==='revealed';
       const isCorrect=status==='correct';
-
       return(
         <div style={p.page}>
           <Confetti active={confetti}/>
@@ -359,12 +555,10 @@
               <button style={{...p.mPill,...(mode==='complex'?p.mPillR:{})}} onClick={()=>switchMode('complex')}>🔴</button>
             </div>
           </header>
-
           <div style={p.targetBox}>
             <div style={p.targetLbl}>NOMBRE CIBLE</div>
             <div style={p.targetVal} key={puzzle?.target}>{puzzle?.target}</div>
           </div>
-
           <div style={p.card}>
             <div style={p.cardRow}>
               <span style={p.cardLbl}>TES NOMBRES</span>
@@ -373,20 +567,16 @@
             <div style={p.numsWrap}>
               {puzzle?.numbers.map((n,i)=>{
                 const used=isUsed(n,i);
-                return(
-                  <button key={i} style={{...p.numTile,...(used?p.numTileOff:{})}} onClick={()=>!used&&addToken(String(n))} disabled={used}>{n}</button>
-                );
+                return(<button key={i} style={{...p.numTile,...(used?p.numTileOff:{})}} onClick={()=>!used&&addToken(String(n))} disabled={used}>{n}</button>);
               })}
             </div>
           </div>
-
           <div style={p.card}>
             <div style={p.cardLbl}>OPÉRATIONS — ILLIMITÉES</div>
             <div style={p.opsWrap}>
               {OPS.map(op=>(<button key={op} style={p.opTile} onClick={()=>addToken(op)}>{op}</button>))}
             </div>
           </div>
-
           {!isRevealed&&(
             <div style={{...p.card,...(shake?{animation:'shake .45s ease'}:{})}}>
               <div style={p.cardRow}>
@@ -407,7 +597,6 @@
               )}
             </div>
           )}
-
           {status&&status!=='revealed'&&(
             <div style={{...p.fb,...(isCorrect?p.fbOk:status==='wrong'?p.fbBad:p.fbWarn)}}>
               {isCorrect&&<>🎉 Bravo ! C'est la bonne réponse !</>}
@@ -415,7 +604,6 @@
               {status==='invalid'&&<>⚠️ Expression invalide ou nombres mal utilisés</>}
             </div>
           )}
-
           {isRevealed&&(
             <div style={p.revealedBox}>
               <div style={p.revealedLabel}>💡 VOICI UNE SOLUTION</div>
@@ -423,11 +611,9 @@
               <div style={{fontSize:12,color:'#484f58',marginTop:4,fontFamily:"'Baloo 2',cursive"}}>Il peut exister d'autres solutions valides !</div>
             </div>
           )}
-
           {showHint&&!isRevealed&&puzzle&&(
             <HintReveal solution={`${puzzle.solution} = ${puzzle.target}`}/>
           )}
-
           <div style={p.actions}>
             {!isRevealed&&!isCorrect&&(
               <button style={p.btnHint} onClick={()=>setShowHint(h=>!h)}>{showHint?'🙈':'💡'}</button>
